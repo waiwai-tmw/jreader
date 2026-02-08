@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -eu
+
+# https://deaddabe.fr/blog/2021/09/29/git-pre-commit-hook-for-rust-projects/
+# https://asciiflow.com
+
+cd jreader-rs
+if ! cargo fmt -- --check
+then
+    echo "┌───────────────────────────────────┐"
+    echo "│                                   │"
+    echo "│ There are some code style issues. │"
+    echo "│       Run cargo fmt first.        │"
+    echo "│                                   │"
+    echo "└───────────────────────────────────┘"
+    exit 1
+fi
+
+exit 0

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Royal blue background -->
+  <rect width="1024" height="1024" fill="#1A237E"/>
+
+  <!-- Eye ring (moderately thin) -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="
+    M-32 512
+    C192 128, 832 128, 1056 512
+    C832 896, 192 896, -32 512
+    Z
+    M160 512
+    C304 304, 720 304, 864 512
+    C720 720, 304 720, 160 512
+    Z"/>
+
+  <!-- Original straight lashes, positioned outward -->
+  <g fill="#FFFFFF">
+    <!-- Top -->
+    <rect x="496" y="60" width="32" height="120" rx="8"/>
+    <rect x="336" y="100" width="28" height="100" rx="6" transform="rotate(-15 350 150)"/>
+    <rect x="660" y="100" width="28" height="100" rx="6" transform="rotate(15 674 150)"/>
+    <!-- Bottom -->
+    <rect x="496" y="844" width="32" height="120" rx="8"/>
+    <rect x="336" y="812" width="28" height="100" rx="6" transform="rotate(15 350 862)"/>
+    <rect x="660" y="812" width="28" height="100" rx="6" transform="rotate(-15 674 862)"/>
+  </g>
+
+  <!-- Kanji 日 -->
+  <g fill="#FFFFFF">
+    <!-- Outer frame -->
+    <rect x="336" y="336" width="352" height="352"/>
+    <!-- Inner void -->
+    <rect x="416" y="416" width="192" height="192" fill="#1A237E"/>
+    <!-- Middle bar -->
+    <rect x="416" y="496" width="192" height="48"/>
+  </g>
+</svg>

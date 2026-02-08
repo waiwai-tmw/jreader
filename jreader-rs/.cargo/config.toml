@@ -1,0 +1,6 @@
+[env]
+RUST_TEST_THREADS = "1"
+
+[test]
+# Ensure tests run single-threaded to prevent race conditions
+# This helps with intermittent test failures caused by test interference

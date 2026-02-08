@@ -1,0 +1,83 @@
+name: Rust CI
+
+on:
+  pull_request:
+    paths:
+      - "jreader-rs/**"
+  push:
+    branches: [ "main" ]
+    paths:
+      - "jreader-rs/**"
+
+jobs:
+  test-rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jreader-rs
+
+    steps:
+      - name: Checkout (main via GITHUB_TOKEN, submodules via PAT)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN }}
+
+      - name: Verify submodules
+        run: |
+          git config -f .gitmodules --get-regexp '^submodule\..*\.url' || true
+          git submodule status --recursive || true
+          ls -la
+          ls -la epub || true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: clippy, rustfmt
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.3
+
+      - name: Try enabling sccache (fallback if unavailable)
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+          # Probe the server; if it fails, disable wrapper so build proceeds normally
+          if ! sccache --start-server >/dev/null 2>&1; then
+            echo "sccache unavailable; disabling."
+            echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
+            echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Cache Rust deps and target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            jreader-rs -> target
+          cache-on-failure: true
+
+      - name: Cargo metadata sanity check
+        run: cargo metadata --no-deps
+
+      - name: Build tests (no run) to compile dev-deps
+        run: cargo test -p jreader-service --no-run
+
+      - name: Run tests
+        run: cargo test --verbose -p jreader-service
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy -p jreader-service --all-targets
+
+      - name: Check licenses
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+          manifest-path: jreader-rs/Cargo.toml
+
+      - name: sccache stats
+        run: sccache --show-stats || true
+

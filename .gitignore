@@ -1,0 +1,12 @@
+.env*
+*.code-workspace
+ipadic-mecab-2_7_0
+entries.db
+key.pem
+
+# Python virtual environments
+jreader-rs/syosetu2epub/.venv
+node_modules
+
+jreader-frontend/playwright-report/
+jreader-frontend/test-results/

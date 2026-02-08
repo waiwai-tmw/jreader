@@ -1,0 +1,4 @@
+[submodule "local-audio-yomichan"]
+	path = local-audio-yomichan
+	url = git@github-waiwai:waiwai-tmw/local-audio-yomichan-jreader.git
+	branch = jreader

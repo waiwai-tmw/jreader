@@ -1,0 +1,22 @@
+[workspace]
+
+members = [
+    "yomitan-format",
+    "jreader-service",
+    "audio-db-bootstrap",
+    "audio-db-query"
+]
+resolver = "2"
+
+[workspace.package]
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1.0"
+camino = "1.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "time", "process"] }
+tracing = "0.1"
+unicode-normalization = "0.1.24"
+uuid = { version = "1.0", features = ["v4"] }
+zip = "2.2"

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>JReader OAuth Callback</title>
+</head>
+<body>
+  <p>Processing authentication...</p>
+  <script>
+    // This page is used as the OAuth redirect target for Firefox
+    // The URL will contain the authorization code from the OAuth provider
+    // Firefox's identity API will capture this and return it to the extension
+
+    // Close this window/tab - the extension will handle the redirect
+    if (window.location.href.includes('code=')) {
+      // Let Firefox's identity API capture this URL
+      setTimeout(() => {
+        window.close();
+      }, 100);
+    }
+  </script>
+</body>
+</html>

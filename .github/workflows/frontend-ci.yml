@@ -1,0 +1,83 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    # No branches filter => runs for PRs into any branch
+    paths:
+      - "jreader-frontend/**"
+  push:
+    # Keep push limited to main (adjust if you want)
+    branches: [ "main" ]
+    paths:
+      - "jreader-frontend/**"
+
+jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+      CI: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install all workspaces
+        run: npm ci --workspaces --legacy-peer-deps
+
+      # - name: Cache Playwright browsers
+      #   uses: actions/cache@v4
+      #   id: playwright-cache
+      #   with:
+      #     path: ~/.cache/ms-playwright
+      #     key: ${{ runner.os }}-playwright-1.56.1
+
+      - name: Run tests (Jest)
+        run: npm test -w jreader-frontend -- --ci
+
+      # - name: Build Next.js (prod)
+      #   run: npm run build -w jreader-frontend
+      #   env:
+      #     STRIPE_SECRET_KEY: dummy-stripe-key
+      #     STRIPE_WEBHOOK_SECRET: dummy-webhook-secret
+      #     STRIPE_PRO_PRODUCT_ID: dummy-product-id
+      #     STRIPE_PRO_PRICE_ID: dummy-price-id
+      #     ADMIN_SUPABASE_UID: dummy-admin-uid
+
+      # - name: Install Playwright browsers
+      #   run: npx playwright install --with-deps
+      #   if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      # - name: Run Playwright E2E tests
+      #   timeout-minutes: 15
+      #   run: npm run test:e2e -w jreader-frontend 2>&1 | tee jreader-frontend-output.log
+      #   env:
+      #     E2E_FAKE_AUTH: true
+      #     NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+      #     NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-key
+      #     DEBUG: pw:api
+
+      # - name: Debug - List jreader-frontend contents
+      #   if: ${{ !cancelled() }}
+      #   run: ls -la jreader-frontend/ | grep -E "playwright|test"
+
+      # - name: Upload frontend output log
+      #   if: ${{ !cancelled() }}
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: jreader-frontend-output-log
+      #     path: jreader-frontend-output.log
+
+      # - name: Upload Playwright report
+      #   uses: actions/upload-artifact@v4
+      #   if: ${{ !cancelled() }}
+      #   with:
+      #     name: playwright-report
+      #     path: jreader-frontend/test-results/
+      #     retention-days: 30

@@ -1,0 +1,12 @@
+{
+  "name": "jreader-monorepo",
+  "private": true,
+  "workspaces": [
+    "jreader-frontend",
+    "jreader-extension",
+    "jreader-shared-types-ts"
+  ],
+  "engines": {
+    "npm": ">=9"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@jreader/shared-types-ts",
+  "version": "1.0.0",
+  "description": "Shared TypeScript types for JReader frontend and extension",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./extensionAvailability": {
+      "types": "./dist/extensionAvailability.d.ts",
+      "import": "./dist/extensionAvailability.js",
+      "default": "./dist/extensionAvailability.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "jreader",
+    "types",
+    "shared"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/aria-query": "^5.0.4",
+    "typescript": "^5.0.0"
+  }
+}

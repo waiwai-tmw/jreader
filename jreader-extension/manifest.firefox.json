@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "JReader",
+  "version": "1.0.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "64": "icons/icon-64.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "description": "Pair your JReader account with the extension for reading and lookup features.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "JReader"
+  },
+  "permissions": [
+    "storage",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://jreader.moe/*",
+    "https://*.supabase.co/*"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.firefox.js",
+    "scripts": ["background.firefox.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://jreader.moe/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "extension@jreader.moe",
+      "strict_min_version": "109.0"
+    }
+  }
+}
