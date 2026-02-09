@@ -1,5 +1,19 @@
 # JReader
 
+JReader is an open-source ebook reader web app that supports Yomitan dictionaries, and is tailored for use on iOS and iPadOS (as well as desktop browsers Chrome/Safari/Firefox).
+The key improvement of JReader over Yomitan is that we reimplement the popup dictionary INTO the web app rather than requiring an extension.
+JReader supports structured Yomitan dictionaries, dictionary entries with images, term audio, and sentence mining and syncing to Anki via an optional browser extension.
+
+Changes planned to enable self-hosting:
+- [ ] Remove Stripe code
+- [ ] Shim or replace Supabase (SQLite?)
+- [ ] Instructions for building all external dependencies and dictionary DBs
+- [ ] Shim or replace OAuth login
+- [ ] Add example .env file
+- [ ] (Not in this repo) Add import-export for existing https://jreader.moe users' data
+
+-----
+
 ## Creating update_at column in Supabase
 source:
 https://dev.to/paullaros/updating-timestamps-automatically-in-supabase-5f5o
