@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-JReader is a Japanese reading and learning platform consisting of three main components:
+JReader is a Japanese reading and learning platform consisting of four main components:
 1. **jreader-frontend**: Next.js 15 web application (main user interface)
 2. **jreader-extension**: Chrome/Firefox browser extension for Anki integration
 3. **jreader-rs**: Rust backend service for dictionary lookups and file processing
+4. **local-audio-yomichan**: Git submodule for Yomichan audio files (external dependency)
 
 ## Development Commands
 
@@ -17,7 +18,8 @@ JReader is a Japanese reading and learning platform consisting of three main com
 npm run dev              # Start Next.js dev server (localhost:3000)
 
 # Production (uses .next-prod directory)
-npm run build           # Production build (checks extension constants)
+npm run build           # Production build (checks extension constants, runs lint + typecheck)
+npm run build:quick     # Quick production build (skips lint + typecheck)
 npm start               # Start production server (localhost:3000 by default)
 
 # E2E Testing (uses .next-prod directory)
@@ -72,7 +74,7 @@ cargo run --bin jreader-service-server
 
 ### Frontend Architecture
 
-**Tech Stack**: Next.js 15 (App Router), React 19 RC, TypeScript, Tailwind CSS, Supabase (auth + database)
+**Tech Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, Supabase (auth + database)
 
 **Key Directories**:
 - `app/`: Next.js app router pages and API routes
@@ -82,7 +84,18 @@ cargo run --bin jreader-service-server
   - `mining/`: Mining history page (Anki card management)
   - `dictionary/`: Standalone dictionary lookup page (public access)
   - `stats/`: User statistics with activity heatmap and progress charts
-  - `api/`: API endpoints (webhooks, auth, upload, etc.)
+  - `settings/`: User settings page
+  - `about/`: About page
+  - `support-development/`: Support/donation page
+  - `api/`: API endpoints
+    - `webhooks/`: Stripe webhook handlers
+    - `ext-auth/`: Extension authentication endpoints
+    - `upload/`, `delete/`: File upload/delete endpoints
+    - `check-admin/`: Admin status check
+    - `subscription/`, `create-checkout-session/`, `create-portal-session/`: Stripe subscription management
+    - `ankiconnect/`, `extension/`: Extension integration endpoints
+    - `sign-audio-url/`, `sign-image-url/`: Media URL signing
+    - `syosetu-metadata/`, `webnovels/`: Webnovel import endpoints
 - `components/`: React components (UI primitives, compound components)
 - `contexts/`: React contexts (Auth, Settings, KanjiMode, etc.)
 - `hooks/`: Custom React hooks
@@ -319,7 +332,7 @@ The monorepo uses npm workspaces to share types between frontend and extension.
 **Why this works**:
 - The shared types package has `"prepare": "npm run build"` and `"files": ["dist"]` to ensure dist/ exists
 - Frontend depends on `@jreader/shared-types-ts@1.0.0` which resolves to the local workspace (not npm registry)
-- `--legacy-peer-deps` handles React 19 RC peer dependency conflicts with `@hello-pangea/dnd`
+- `--legacy-peer-deps` handles React 19 peer dependency conflicts with `@hello-pangea/dnd`
 - Next.js config includes `transpilePackages: ['@jreader/shared-types-ts']`
 
 ## Git Workflow
