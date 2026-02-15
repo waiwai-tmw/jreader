@@ -118,6 +118,15 @@ where
         let mut inner = self.inner.clone();
 
         Box::pin(async move {
+            // Accept X-Username header as an alternative to JWT Bearer token
+            // (used by the SQLite-based self-hosted auth system)
+            let username_header = req
+                .headers()
+                .get("X-Username")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+
             let token = req
                 .headers()
                 .get("Authorization")
@@ -129,26 +138,33 @@ where
                     stripped.unwrap_or(t).trim().to_string()
                 });
 
-            let user_id = match token {
-                Some(token) => match auth_service.verify_token(token).await {
-                    Ok(user_id) => {
-                        trace!("User ID: {:?}", user_id);
-                        req.headers_mut()
-                            .insert("user_id", user_id.parse().unwrap());
-                        user_id
-                    }
-                    Err(_) => {
+            let user_id = if let Some(username) = username_header {
+                // Username-based auth: use the username directly as user_id
+                req.headers_mut()
+                    .insert("user_id", username.parse().unwrap());
+                username
+            } else {
+                match token {
+                    Some(token) => match auth_service.verify_token(token).await {
+                        Ok(user_id) => {
+                            trace!("User ID: {:?}", user_id);
+                            req.headers_mut()
+                                .insert("user_id", user_id.parse().unwrap());
+                            user_id
+                        }
+                        Err(_) => {
+                            return Ok(Response::builder()
+                                .status(StatusCode::UNAUTHORIZED)
+                                .body(axum::body::Body::from("Invalid token"))
+                                .unwrap())
+                        }
+                    },
+                    None => {
                         return Ok(Response::builder()
                             .status(StatusCode::UNAUTHORIZED)
-                            .body(axum::body::Body::from("Invalid token"))
+                            .body(axum::body::Body::from("No authorization token provided"))
                             .unwrap())
                     }
-                },
-                None => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::UNAUTHORIZED)
-                        .body(axum::body::Body::from("No authorization token provided"))
-                        .unwrap())
                 }
             };
 

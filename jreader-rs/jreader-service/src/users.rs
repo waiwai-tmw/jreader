@@ -4,16 +4,17 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct UsersSupabase {
-    pool: Arc<Pool>,
+    pool: Option<Arc<Pool>>,
 }
 
 impl UsersSupabase {
-    pub fn new(pool: Arc<Pool>) -> Self {
+    pub fn new(pool: Option<Arc<Pool>>) -> Self {
         Self { pool }
     }
 
     pub async fn get_user_tier(&self, user_id: Uuid) -> Result<i16> {
-        let client = self.pool.get().await?;
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("Database not available"))?;
+        let client = pool.get().await?;
 
         let row = client
             .query_one(

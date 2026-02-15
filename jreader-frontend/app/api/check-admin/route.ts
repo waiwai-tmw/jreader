@@ -1,38 +1,32 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
-import { createClient } from '@/utils/supabase/server'
-
 export async function GET(request: NextRequest) {
   try {
     console.log('🔍 API: Checking admin status...')
-    
-    const supabase = await createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
-    
-    if (error) {
-      console.error('❌ API: Supabase auth error:', error)
+
+    // Get username from cookie
+    const username = request.cookies.get('jreader_username')?.value
+
+    if (!username) {
+      console.log('❌ API: No username found in cookie')
       return NextResponse.json({ isAdmin: false }, { status: 401 })
     }
-    
-    if (!user) {
-      console.log('❌ API: No user found')
-      return NextResponse.json({ isAdmin: false }, { status: 401 })
+
+    console.log('👤 API: Username:', username)
+
+    // Check if username matches admin username from environment
+    const adminUsername = process.env.ADMIN_USERNAME
+    console.log('🔑 API: Admin username from env:', adminUsername)
+
+    if (!adminUsername) {
+      console.log('⚠️ API: ADMIN_USERNAME environment variable not set, admin features disabled')
+      return NextResponse.json({ isAdmin: false })
     }
-    
-    console.log('👤 API: User ID:', user.id)
-    
-    const adminUserId = process.env.ADMIN_SUPABASE_UID
-    console.log('🔑 API: Admin UID from env:', adminUserId)
-    
-    if (!adminUserId) {
-      console.error('❌ API: ADMIN_SUPABASE_UID environment variable not set')
-      return NextResponse.json({ isAdmin: false }, { status: 500 })
-    }
-    
-    const isAdmin = user.id === adminUserId
+
+    const isAdmin = username === adminUsername
     console.log('👑 API: Is admin:', isAdmin)
-    
+
     return NextResponse.json({ isAdmin })
   } catch (error) {
     console.error('❌ API: Error checking admin status:', error)

@@ -1,4 +1,5 @@
 .env*
+!.env*.example
 *.code-workspace
 ipadic-mecab-2_7_0
 entries.db
@@ -10,3 +11,4 @@ node_modules
 
 jreader-frontend/playwright-report/
 jreader-frontend/test-results/
+jreader-frontend/data/

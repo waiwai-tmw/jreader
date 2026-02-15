@@ -37,6 +37,7 @@ import type { BookSelectEvent } from '@/types';
 import { getBackendApiUrl } from '@/utils/api';
 import { debug } from '@/utils/debug';
 import { encodeFilename } from '@/utils/filename';
+import { getCurrentUsername } from '@/lib/client-auth';
 import { createClient, getMetadata } from '@/utils/supabase/client';
 import { type SyosetuApiResponse } from '@/utils/syosetuApi';
 import { getGenreName } from '@/utils/syosetuGenres';
@@ -384,12 +385,18 @@ export default function LibraryPane({ setActivePane, isAuthenticated = true, isA
   // Helper function to check for active imports
   const checkActiveImports = async () => {
     try {
-      const metadata = await getMetadata();
+      const username = getCurrentUsername();
+
+      if (!username) {
+        setHasActiveImports(false);
+        return;
+      }
+
       const apiUrl = `${getBackendApiUrl()}/api/import-progress`;
       const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${metadata.accessToken}`,
+          'X-Username': username,
           'Content-Type': 'application/json',
         },
       });
@@ -479,42 +486,14 @@ export default function LibraryPane({ setActivePane, isAuthenticated = true, isA
 
       const data = await response.json();
       if (data) {
-        const allRecentWebnovels = data.webnovels || [];
-
-        // Check which webnovels the user already has
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-
-        let webnovelsWithStatus: RecentWebnovel[] = [];
-
-        if (user) {
-          // Get user's webnovel IDs
-          const { data: userWebnovels, error: userWebnovelError } = await supabase
-            .from('user_webnovel')
-            .select('webnovel_id')
-            .eq('user_id', user.id);
-
-          if (!userWebnovelError && userWebnovels) {
-            const userWebnovelIds = new Set(userWebnovels.map(uw => uw.webnovel_id));
-            // Add a flag to indicate if user already has each webnovel
-            webnovelsWithStatus = allRecentWebnovels.map((webnovel: RecentWebnovel) => ({
-              ...webnovel,
-              userHasIt: userWebnovelIds.has(webnovel.id)
-            }));
-          } else {
-            // If error fetching user webnovels, show all recent webnovels without status
-            webnovelsWithStatus = allRecentWebnovels;
-          }
-        } else {
-          // If no user, show all recent webnovels without status
-          webnovelsWithStatus = allRecentWebnovels;
-        }
+        // API now returns webnovels with userHasIt flag already set
+        const webnovelsWithStatus = data.webnovels || [];
 
         setRecentWebnovels(webnovelsWithStatus);
         setTotalWebnovelCount(data.pagination?.totalCount || 0);
 
         // Use stored metadata from database
-        const webnovelsWithMetadata = webnovelsWithStatus.map(webnovel => ({
+        const webnovelsWithMetadata = webnovelsWithStatus.map((webnovel: RecentWebnovel) => ({
           ...webnovel,
           syosetuMetadata: webnovel.syosetu_metadata || undefined
         }));
@@ -585,143 +564,46 @@ export default function LibraryPane({ setActivePane, isAuthenticated = true, isA
     setError(null);
 
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const username = getCurrentUsername();
+      if (!username) throw new Error('Not authenticated');
 
-      // Fetch regular uploaded books
-      const { data: books, error } = await supabase
-        .from('User Uploads')
-        .select('*')
-        .order('created_at', { ascending: false });
+      setLoadingProgress(25);
+      setLoadingMessage('Loading your library...');
 
-      if (error) {
-        throw error;
-      }
-
-      // Fetch user's webnovels
-      const { data: userWebnovels, error: webnovelError } = await supabase
-        .from('user_webnovel')
-        .select(`
-          webnovel_id,
-          created_at,
-          webnovel:webnovel_id (
-            id,
-            title,
-            author,
-            total_pages,
-            directory_name,
-            cover_path,
-            url,
-            source
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (webnovelError) {
-        console.error('Error fetching webnovels:', webnovelError);
-        // Don't throw, just log the error and continue with regular books
-      }
-
-      // Combine regular books and webnovels
-      const allBooks = [];
-
-      // Add regular uploaded books
-      if (books) {
-        const regularBooks = books.map(book => ({
-          supabase_upload_id: book.id,
-          filename: book.directory_name,
-          title: book.title,
-          author: book.author,
-          totalPages: book.total_pages,
-          coverPath: book.cover_path ? `${user.id}/${encodeFilename(book.id)}/${encodeFilename(book.cover_path)}` : null,
-          isWebnovel: false,
-          webnovelUrl: null
-        }));
-        allBooks.push(...regularBooks);
-      }
-
-      // Add webnovels
-      if (userWebnovels) {
-        const webnovelBooks = userWebnovels.map(uw => ({
-          supabase_upload_id: (uw as any).webnovel.id,
-          filename: (uw as any).webnovel.directory_name,
-          title: (uw as any).webnovel.title,
-          author: (uw as any).webnovel.author,
-          totalPages: (uw as any).webnovel.total_pages,
-          coverPath: (uw as any).webnovel.cover_path ? `${encodeFilename((uw as any).webnovel.id)}/${encodeFilename((uw as any).webnovel.cover_path)}` : null,
-          isWebnovel: true,
-          webnovelUrl: (uw as any).webnovel.url
-        }));
-        allBooks.push(...webnovelBooks);
-      }
-
-      // Sort all books by creation date (most recent first)
-      allBooks.sort((a, b) => {
-        // For regular books, we don't have the creation date in the current structure
-        // For webnovels, we can use the user_webnovel.created_at
-        // For now, just put webnovels first, then regular books
-        if (a.isWebnovel && !b.isWebnovel) return -1;
-        if (!a.isWebnovel && b.isWebnovel) return 1;
-        return 0;
+      // Fetch books from the new API endpoint
+      const response = await fetch('/api/books', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
-      if (allBooks.length > 0) {
-        // First, create all the basic book objects without cover URLs
-        const basicBooks = allBooks;
-
-        setLoadingMessage(`Loading book covers for ${basicBooks.length} books...`);
-        setLoadingProgress(25);
-
-        // Generate all cover URLs in parallel
-        const coverUrlPromises = basicBooks.map(async (book) => {
-          if (!book.coverPath) return { supabase_upload_id: book.supabase_upload_id, coverUrl: undefined };
-
-          try {
-            // Use different bucket for webnovels vs regular books
-            const bucketName = book.isWebnovel ? 'webnovel' : 'uploads';
-            const { data: signedUrl, error: urlError } = await supabase.storage
-              .from(bucketName)
-              .createSignedUrl(book.coverPath, 3600, { // 1 hour expiry
-                transform: {
-                  width: 192,  // 2x the display size for crisp images on high-DPI displays
-                  height: 256, // 2x the display size for crisp images on high-DPI displays
-                  resize: 'cover',
-                  quality: 80
-                }
-              });
-
-            if (urlError) {
-              console.error('Error creating signed URL for cover:', urlError);
-              return { supabase_upload_id: book.supabase_upload_id, coverUrl: undefined };
-            } else {
-              return { supabase_upload_id: book.supabase_upload_id, coverUrl: signedUrl.signedUrl };
-            }
-          } catch (error) {
-            console.error('Error generating cover URL:', error);
-            return { supabase_upload_id: book.supabase_upload_id, coverUrl: undefined };
-          }
-        });
-
-        // Wait for all cover URLs to be generated in parallel
-        const coverResults = await Promise.all(coverUrlPromises);
-        setLoadingProgress(75);
-        setLoadingMessage('Preparing your library...');
-
-        // Combine the basic book data with the cover URLs
-        const booksWithCovers = basicBooks.map(book => {
-          const coverResult = coverResults.find(result => result.supabase_upload_id === book.supabase_upload_id);
-          return {
-            ...book,
-            coverUrl: coverResult?.coverUrl
-          };
-        });
-
-        setBooks(booksWithCovers);
-        setLoadingProgress(100);
-        setLoadingMessage('Done!');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch books');
       }
+
+      const data = await response.json();
+      const allBooks = data.books || [];
+
+      setLoadingProgress(75);
+      setLoadingMessage('Preparing your library...');
+
+      // Map the API response to the Book interface
+      const booksWithCovers = allBooks.map((book: any) => ({
+        supabase_upload_id: book.supabase_upload_id,
+        filename: book.filename,
+        title: book.title,
+        author: book.author,
+        totalPages: book.totalPages,
+        coverUrl: book.coverPath, // The API now returns the full URL
+        isWebnovel: book.isWebnovel,
+        webnovelUrl: book.webnovelUrl
+      }));
+
+      setBooks(booksWithCovers);
+      setLoadingProgress(100);
+      setLoadingMessage('Done!');
     } catch (error: any) {
       setError(error.message);
       debug(`Failed to fetch books: ${error.message}`);

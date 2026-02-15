@@ -5,16 +5,20 @@ import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
-import { LoginButton } from '@/components/LoginButton'
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/hooks/usePageTitle'
+import { isValidUsername } from '@/lib/client-auth'
 
 export default function LoginPage() {
   const searchParams = useSearchParams()
   const { user, isLoading } = useAuth()
   const router = useRouter()
   usePageTitle('Login - JReader');
+  const [username, setUsername] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const [redirectInfo, setRedirectInfo] = useState<{
     path: string;
     displayName: string;
@@ -108,6 +112,47 @@ export default function LoginPage() {
     return null // Will redirect in useEffect above
   }
 
+  const handleLogin = async () => {
+    setError(null)
+
+    const trimmedUsername = username.trim()
+
+    if (!trimmedUsername) {
+      setError('Please enter a username')
+      return
+    }
+
+    if (!isValidUsername(trimmedUsername)) {
+      setError('Username must be 1-50 characters and contain only letters, numbers, underscores, and hyphens')
+      return
+    }
+
+    // Store username in localStorage (will be picked up by AuthContext)
+    localStorage.setItem('jreader_username', trimmedUsername)
+
+    // Also set cookie for server-side middleware
+    document.cookie = `jreader_username=${encodeURIComponent(trimmedUsername)}; path=/; max-age=${60 * 60 * 24 * 365}`; // 1 year
+
+    // Trigger auth context to reload
+    window.dispatchEvent(new Event('storage'))
+
+    // Check if there's a redirect URL to go back to
+    const redirectUrl = localStorage.getItem('redirectAfterLogin')
+    if (redirectUrl) {
+      localStorage.removeItem('redirectAfterLogin')
+      router.push(redirectUrl)
+    } else {
+      // Default redirect to library
+      router.push('/library')
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleLogin()
+    }
+  }
+
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
@@ -121,19 +166,34 @@ export default function LoginPage() {
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Welcome to JReader</CardTitle>
             <CardDescription>
-              Continue with Discord to start reading
+              Enter your username to start reading
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex justify-center">
-            <LoginButton />
+          <CardContent>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  className="w-full"
+                  autoFocus
+                />
+                {error && (
+                  <p className="text-sm text-destructive">{error}</p>
+                )}
+              </div>
+              <Button onClick={handleLogin} className="w-full">
+                Continue
+              </Button>
+            </div>
           </CardContent>
         </Card>
-        {/* <div className="text-balance text-center text-xs text-muted-foreground">
-          By continuing, you agree to our{" "}
-          <a href="#" className="underline underline-offset-4 hover:text-primary">Terms of Service</a>{" "}
-          and{" "}
-          <a href="#" className="underline underline-offset-4 hover:text-primary">Privacy Policy</a>.
-        </div> */}
+        <div className="text-balance text-center text-xs text-muted-foreground">
+          Self-hosted reading app for Japanese learners
+        </div>
       </div>
     </div>
   )

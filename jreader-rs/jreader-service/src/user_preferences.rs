@@ -60,7 +60,7 @@ pub trait UserPreferencesStoreAsync {
 }
 
 pub struct UserPreferencesSupabase {
-    pool: Arc<Pool>,
+    pool: Option<Arc<Pool>>,
     dictionary_info: Vec<DictionaryInfo>,
 }
 
@@ -90,7 +90,7 @@ pub fn build_shared_pool(
 }
 
 impl UserPreferencesSupabase {
-    pub fn new(pool: Arc<Pool>, dictionary_info: Vec<DictionaryInfo>) -> Self {
+    pub fn new(pool: Option<Arc<Pool>>, dictionary_info: Vec<DictionaryInfo>) -> Self {
         Self {
             pool,
             dictionary_info,
@@ -100,7 +100,8 @@ impl UserPreferencesSupabase {
 
 impl UserPreferencesStoreAsync for UserPreferencesSupabase {
     async fn save(&self, preferences: &UserPreferences) -> Result<()> {
-        let client = self.pool.get().await?;
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("Database not available"))?;
+        let client = pool.get().await?;
 
         client.execute(
             r#"INSERT INTO "public"."User Preferences" 
@@ -127,7 +128,8 @@ impl UserPreferencesStoreAsync for UserPreferencesSupabase {
 
     #[instrument(skip(self))]
     async fn get(&self, user_id: Uuid) -> Result<UserPreferences> {
-        let client = self.pool.get().await?;
+        let pool = self.pool.as_ref().ok_or_else(|| anyhow::anyhow!("Database not available"))?;
+        let client = pool.get().await?;
         let statement = client.prepare(
             r#"SELECT "term_order", "term_disabled", "term_spoiler", "freq_order", "freq_disabled"
                FROM "public"."User Preferences"

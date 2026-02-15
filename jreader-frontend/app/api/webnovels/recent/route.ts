@@ -1,68 +1,81 @@
 import { NextResponse } from 'next/server';
+import { desc, count, eq, and } from 'drizzle-orm';
+import { cookies } from 'next/headers';
 
-import { createServiceRoleClient } from '@/utils/supabase/service-role';
+import { db, webnovel, userWebnovel, users } from '@/db';
 
 export async function GET(request: Request) {
   console.log('=== Recent Webnovels API Route Started ===');
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
-    
+
     console.log('Pagination params:', { page, limit, offset });
-    
-    const supabase = createServiceRoleClient();
-    console.log('Supabase service role client created successfully');
-    
-    // Test if we can access the supabase client
-    console.log('Supabase client type:', typeof supabase);
-    console.log('Supabase from method:', typeof supabase.from);
-    
+
+    // Get username from cookie
+    const cookieStore = await cookies();
+    const username = cookieStore.get('jreader_username')?.value;
+
+    // Get user ID if logged in
+    let userId: string | null = null;
+    if (username) {
+      const userResult = await db.select({ id: users.id })
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1);
+      userId = userResult[0]?.id || null;
+    }
+
     // Get total count first
-    const { count: totalCount, error: countError } = await supabase
-      .from('webnovel')
-      .select('*', { count: 'exact', head: true });
-    
-    if (countError) {
-      console.error('Error getting total count:', countError);
-    }
-    
+    const totalCountResult = await db.select({ count: count() }).from(webnovel);
+    const totalCount = totalCountResult[0]?.count || 0;
+
+    console.log('Total webnovels count:', totalCount);
+
     // Get the paginated recent webnovel imports
-    const { data: recentWebnovels, error } = await supabase
-      .from('webnovel')
-      .select('id, title, author, url, created_at, syosetu_metadata')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const recentWebnovels = await db
+      .select({
+        id: webnovel.id,
+        title: webnovel.title,
+        author: webnovel.author,
+        url: webnovel.url,
+        created_at: webnovel.created_at,
+        syosetu_metadata: webnovel.syosetu_metadata,
+      })
+      .from(webnovel)
+      .orderBy(desc(webnovel.created_at))
+      .limit(limit)
+      .offset(offset);
 
-    if (error) {
-      console.error('Error fetching recent webnovels:', error);
-      console.error('Error details:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      });
-      
-      // Return empty array instead of error to prevent UI issues
-      return NextResponse.json({
-        webnovels: [],
-        error: 'Unable to fetch recent webnovels'
-      });
+    // If user is logged in, check which webnovels they already have
+    let webnovelsWithStatus = recentWebnovels;
+    if (userId) {
+      const userWebnovelIds = await db
+        .select({ webnovel_id: userWebnovel.webnovel_id })
+        .from(userWebnovel)
+        .where(eq(userWebnovel.user_id, userId));
+
+      const userWebnovelIdSet = new Set(userWebnovelIds.map(uw => uw.webnovel_id));
+
+      webnovelsWithStatus = recentWebnovels.map(wn => ({
+        ...wn,
+        userHasIt: userWebnovelIdSet.has(wn.id)
+      }));
     }
 
-    console.log('Successfully fetched recent webnovels:', recentWebnovels?.length || 0);
-    console.log('Total count:', totalCount);
-    
+    console.log('Successfully fetched recent webnovels:', recentWebnovels.length);
+
     return NextResponse.json({
-      webnovels: recentWebnovels || [],
+      webnovels: webnovelsWithStatus,
       pagination: {
         page,
         limit,
-        totalCount: totalCount || 0,
-        totalPages: Math.ceil((totalCount || 0) / limit),
-        hasNextPage: offset + limit < (totalCount || 0),
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+        hasNextPage: offset + limit < totalCount,
         hasPrevPage: page > 1
       }
     });
@@ -72,10 +85,18 @@ export async function GET(request: Request) {
     console.error('Error type:', typeof error);
     console.error('Error message:', error instanceof Error ? error.message : String(error));
     console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
-    
+
     // Return empty array instead of error to prevent UI issues
     return NextResponse.json({
       webnovels: [],
+      pagination: {
+        page: 1,
+        limit: 10,
+        totalCount: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPrevPage: false
+      },
       error: 'Internal server error'
     });
   }

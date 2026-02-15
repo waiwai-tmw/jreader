@@ -39,7 +39,6 @@ import { EXTENSION_CONTENT_SCRIPT_EVENT_ANKI_UPDATE_NOTE_FIELDS, EXTENSION_CONTE
 import { canManualSyncToAnki } from '@/utils/ankiconnect/syncHelpers'
 import { useSyncContext } from '@/utils/ankiconnect/syncHooks'
 import { safeStorage } from '@/utils/safeStorage'
-import { createClient } from '@/utils/supabase/client'
 
 interface MiningCard {
   id: number
@@ -112,70 +111,38 @@ export default function MiningPage() {
   useEffect(() => {
     const fetchCards = async () => {
       setIsLoading(true)
-      const supabase = createClient()
 
-      // When filtering, we need to fetch all cards and filter client-side
-      // since Supabase doesn't support comparing two columns directly
-      if (showOnlyNeedingUpdate) {
-        const orderColumn = sortBy === 'sync_status' ? 'synced_at' : sortBy
-        const { data: allData, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order(orderColumn, {
-            ascending: sortDirection === 'asc',
-            nullsFirst: sortBy === 'sync_status' ? (sortDirection === 'asc') : undefined
-          })
+      try {
+        // Fetch cards from API
+        const params = new URLSearchParams({
+          sortBy,
+          sortDirection,
+          showOnlyNeedingUpdate: showOnlyNeedingUpdate.toString(),
+          page: currentPage.toString(),
+          limit: itemsPerPage.toString()
+        })
 
-        if (error) {
-          console.error('Error fetching cards:', error)
-          setIsLoading(false)
-          return
+        const response = await fetch(`/api/cards?${params.toString()}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch cards')
         }
 
-        // Filter cards where updated_at > synced_at (and synced_at is not null)
-        const filteredData = (allData || []).filter(card =>
-          card.synced_at && new Date(card.updated_at) > new Date(card.synced_at)
-        )
+        const { cards: fetchedCards, totalCount: count, totalPages: pages } = await response.json()
 
-        setTotalCount(filteredData.length)
-        setTotalPages(Math.ceil(filteredData.length / itemsPerPage))
-
-        // Apply pagination to filtered results
-        const paginatedData = filteredData.slice(
-          (currentPage - 1) * itemsPerPage,
-          currentPage * itemsPerPage
-        )
-
-        setCards(paginatedData)
-      } else {
-        // Normal mode: server-side pagination
-        const { count: totalCount } = await supabase
-          .from('cards')
-          .select('*', { count: 'exact', head: true })
-
-        setTotalCount(totalCount || 0)
-        setTotalPages(Math.ceil((totalCount || 0) / itemsPerPage))
-
-        const orderColumn = sortBy === 'sync_status' ? 'synced_at' : sortBy
-        const { data, error } = await supabase
-          .from('cards')
-          .select('*')
-          .order(orderColumn, {
-            ascending: sortDirection === 'asc',
-            nullsFirst: sortBy === 'sync_status' ? (sortDirection === 'asc') : undefined
-          })
-          .range((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage - 1)
-
-        if (error) {
-          console.error('Error fetching cards:', error)
-          setIsLoading(false)
-          return
-        }
-
-        setCards(data || [])
+        setCards(fetchedCards)
+        setTotalCount(count)
+        setTotalPages(pages)
+      } catch (error) {
+        console.error('Error fetching cards:', error)
+      } finally {
+        setIsLoading(false)
       }
-
-      setIsLoading(false)
     }
 
     fetchCards()
@@ -185,13 +152,8 @@ export default function MiningPage() {
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
-
         // Try cached preferences first
-        const cachedKey = `user-preferences-${user.id}`
-        const cached = safeStorage.getItem(cachedKey)
+        const cached = safeStorage.getItem('user-preferences-current')
         if (cached) {
           try {
             const parsed = JSON.parse(cached)
@@ -200,23 +162,37 @@ export default function MiningPage() {
           } catch {}
         }
 
-        let { data, error } = await supabase
-          .from('User Preferences')
-          .select('term_order, term_disabled, term_spoiler, freq_order, should_highlight_kanji_in_search')
-          .eq('user_id', user.id)
-          .maybeSingle()
+        // Fetch from API
+        const response = await fetch('/api/preferences', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
 
-        if (error) throw error
+        if (!response.ok) {
+          throw new Error('Failed to fetch preferences')
+        }
+
+        const { preferences: data } = await response.json()
 
         if (!data) {
-          const { data: dictIndexData, error: dictIndexError } = await supabase
-            .from('Dictionary Index')
-            .select('title, revision, type')
-            .order('title')
-          if (dictIndexError) throw dictIndexError
+          // Get default preferences from dictionaries
+          const dictResponse = await fetch('/api/dictionaries', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
 
-          const termDicts = dictIndexData?.filter(d => d.type === 0).map(d => `${d.title}#${d.revision}`) || []
-          const freqDicts = dictIndexData?.filter(d => d.type === 2).map(d => `${d.title}#${d.revision}`) || []
+          if (!dictResponse.ok) {
+            throw new Error('Failed to fetch dictionaries')
+          }
+
+          const { dictionaries: dictIndexData } = await dictResponse.json()
+
+          const termDicts = dictIndexData?.filter((d: any) => d.type === 0).map((d: any) => `${d.title}#${d.revision}`) || []
+          const freqDicts = dictIndexData?.filter((d: any) => d.type === 2).map((d: any) => `${d.title}#${d.revision}`) || []
 
           const prefs = {
             dictionaryOrder: termDicts,
@@ -226,19 +202,19 @@ export default function MiningPage() {
             shouldHighlightKanjiInSearch: true,
           }
           setUserPreferences(prefs)
-          safeStorage.setItem(cachedKey, JSON.stringify(prefs))
+          safeStorage.setItem('user-preferences-current', JSON.stringify(prefs))
           return
         }
 
         const prefs = {
-          dictionaryOrder: data.term_order ? data.term_order.split(',') : [],
-          disabledDictionaries: data.term_disabled ? data.term_disabled.split(',') : [],
-          spoilerDictionaries: data.term_spoiler ? data.term_spoiler.split(',') : [],
-          freqDictionaryOrder: data.freq_order ? data.freq_order.split(',') : [],
-          shouldHighlightKanjiInSearch: data.should_highlight_kanji_in_search ?? true,
+          dictionaryOrder: data.dictionaryOrder,
+          disabledDictionaries: data.disabledDictionaries,
+          spoilerDictionaries: data.spoilerDictionaries,
+          freqDictionaryOrder: data.freqDictionaryOrder,
+          shouldHighlightKanjiInSearch: data.shouldHighlightKanjiInSearch ?? true,
         }
         setUserPreferences(prefs)
-        safeStorage.setItem(cachedKey, JSON.stringify(prefs))
+        safeStorage.setItem('user-preferences-current', JSON.stringify(prefs))
       } catch (err) {
         console.error('Failed to load user preferences for mining SearchPane:', err)
       }
@@ -327,35 +303,30 @@ export default function MiningPage() {
       // Use the captured editing card id to avoid expression-based lookup issues
       if (!editingCardId) return
 
-      const supabase = createClient()
-      const { data: updatedRows, error: updateError } = await supabase
-        .from('cards')
-        .update({
-          expression: prepared.term,
-          reading: prepared.reading || null,
-          definitions: prepared.definitions,
-          sentence: (searchQuery && searchQuery !== prepared.term) ? searchQuery : null,
-          pitch_accent: prepared.pitchAccent || null,
-          frequency: prepared.frequencyPairs,
-          expression_audio: prepared.expressionAudio || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', editingCardId)
-        .select('id, updated_at')
+      // Update card via API
+      const response = await fetch(`/api/cards/${editingCardId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          updates: {
+            expression: prepared.term,
+            reading: prepared.reading || null,
+            definitions: prepared.definitions,
+            sentence: (searchQuery && searchQuery !== prepared.term) ? searchQuery : null,
+            pitch_accent: prepared.pitchAccent || null,
+            frequency: prepared.frequencyPairs,
+            expression_audio: prepared.expressionAudio || null,
+          }
+        }),
+      })
 
-      if (updateError) {
-        console.error('Failed to update card in Supabase:', updateError)
-        toast.error('Failed to save card', { description: updateError.message })
-        setIsSaving(false)
-        return
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save card')
       }
 
-      // Confirm update applied and then proceed
-      if (!updatedRows || updatedRows.length === 0) {
-        toast.error('Failed to confirm save')
-        setIsSaving(false)
-        return
-      }
       toast.success('Card saved', {
         description: 'Refresh the page to see your changes',
         duration: 5000
@@ -369,7 +340,7 @@ export default function MiningPage() {
     } finally {
       setIsSaving(false)
     }
-  }, [cards, searchQuery])
+  }, [editingCardId, searchQuery])
 
   return (
     <div className="flex flex-col h-screen">

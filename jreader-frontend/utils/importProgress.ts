@@ -1,5 +1,5 @@
 import { getBackendApiUrl } from '@/utils/api';
-import { getMetadata } from '@/utils/supabase/client';
+import { getCurrentUsername } from '@/lib/client-auth';
 
 export interface ImportProgress {
   id: string;
@@ -19,18 +19,24 @@ export interface ImportProgressResponse {
 }
 
 export async function fetchImportProgress(): Promise<ImportProgressResponse> {
-  const metadata = await getMetadata();
+  const username = getCurrentUsername();
+
+  // If no username, return empty imports
+  if (!username) {
+    return { imports: [] };
+  }
+
   const apiUrl = `${getBackendApiUrl()}/api/import-progress`;
-  
+
   // Create an AbortController for timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-  
+
   try {
     const response = await fetch(apiUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${metadata.accessToken}`,
+        'X-Username': username,
         'Content-Type': 'application/json',
       },
       signal: controller.signal,
@@ -53,13 +59,18 @@ export async function fetchImportProgress(): Promise<ImportProgressResponse> {
 }
 
 export async function cancelImport(importId: string): Promise<void> {
-  const metadata = await getMetadata();
+  const username = getCurrentUsername();
+
+  if (!username) {
+    throw new Error('Not authenticated');
+  }
+
   const apiUrl = `${getBackendApiUrl()}/api/import-progress/${importId}/cancel`;
-  
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${metadata.accessToken}`
+      'X-Username': username
     }
   });
 
@@ -69,24 +80,29 @@ export async function cancelImport(importId: string): Promise<void> {
 }
 
 export async function updateImportProgress(importId: string, status: string, log?: string): Promise<void> {
-  const metadata = await getMetadata();
+  const username = getCurrentUsername();
+
+  if (!username) {
+    throw new Error('Not authenticated');
+  }
+
   const baseUrl = getBackendApiUrl();
   const apiUrl = `${baseUrl}/api/import-progress/${importId}/update`;
-  
+
   console.log('Updating import progress:', {
     importId,
     status,
     log,
     baseUrl,
     apiUrl,
-    hasToken: !!metadata.accessToken,
+    hasUsername: !!username,
     isServer: typeof window === 'undefined'
   });
-  
+
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${metadata.accessToken}`,
+      'X-Username': username,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -104,12 +120,17 @@ export async function updateImportProgress(importId: string, status: string, log
     });
     throw new Error(`Failed to update import progress: ${response.statusText}`);
   }
-  
+
   console.log('Successfully updated import progress');
 }
 
 export async function clearCompletedImports(): Promise<{ removed_count: number }> {
-  const metadata = await getMetadata();
+  const username = getCurrentUsername();
+
+  if (!username) {
+    throw new Error('Not authenticated');
+  }
+
   const baseUrl = getBackendApiUrl();
   const apiUrl = `${baseUrl}/api/import-progress/clear`;
 
@@ -117,7 +138,7 @@ export async function clearCompletedImports(): Promise<{ removed_count: number }
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${metadata.accessToken}`
+      'X-Username': username
     }
   });
 

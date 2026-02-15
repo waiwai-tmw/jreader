@@ -1,45 +1,30 @@
-import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
 
-import { createClient } from '@/utils/supabase/server';
+import { db, users } from '@/db'
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const cookieStore = await cookies()
+    const username = cookieStore.get('jreader_username')?.value
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!username) {
+      return NextResponse.json({ tier: 0, isSubscribed: false })
     }
 
-    // Query the public.Users table to get the user's tier
-    const { data: userData, error: userError } = await supabase
-      .from('Users')
-      .select('tier')
-      .eq('id', user.id)
-      .single();
+    const user = await db
+      .select({ tier: users.tier })
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1)
 
-    if (userError) {
-      console.error('Error fetching user tier:', userError);
-      // Default to free tier if user not found in Users table
-      return NextResponse.json({ tier: 0, isSubscribed: false });
-    }
+    const tier = user[0]?.tier ?? 0
+    const isSubscribed = tier >= 1
 
-    const tier = userData?.tier || 0;
-    const isSubscribed = tier >= 1; // 0 = free, 1+ = pro
-
-    return NextResponse.json({ 
-      tier, 
-      isSubscribed 
-    });
-
+    return NextResponse.json({ tier, isSubscribed })
   } catch (error) {
-    console.error('Subscription check error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('Subscription check error:', error)
+    return NextResponse.json({ tier: 0, isSubscribed: false })
   }
-} 
+}

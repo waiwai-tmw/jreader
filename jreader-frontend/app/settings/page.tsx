@@ -9,13 +9,11 @@ import SettingsPane from "@/components/SettingsPane"
 import { useAuth } from '@/contexts/AuthContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { createClient } from '@/utils/supabase/client'
 
 
 export default function SettingsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-  const supabase = createClient();
   usePageTitle('Settings - JReader');
   
   const [preferences, setPreferences] = useState<{
@@ -57,57 +55,63 @@ export default function SettingsPage() {
           }
         }
 
-        let { data, error } = await supabase
-          .from('User Preferences')
-          .select('term_order, term_disabled, term_spoiler, freq_order, freq_disabled, should_highlight_kanji_in_search, should_highlight_kanji_in_text')
-          .eq('user_id', user.id)
-          .maybeSingle();
+        // Fetch preferences from API
+        const response = await fetch('/api/preferences', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
 
-        if (error) throw error;
-        if (!data) {
-          // console.log('No user preferences found');
-          
-          // Get all dictionaries from Dictionary Index
-          const { data: dictIndexData, error: dictIndexError } = await supabase
-              .from('Dictionary Index')
-              .select('title, revision, type')
-              .order('title');
-
-          if (dictIndexError) throw dictIndexError;
-          
-          // Create default preferences
-          const termDicts = dictIndexData
-              ?.filter(d => d.type === 0)
-              .map(d => `${d.title}#${d.revision}`) || [];
-              
-          const freqDicts = dictIndexData
-              ?.filter(d => d.type === 2)
-              .map(d => `${d.title}#${d.revision}`) || [];
-
-          data = {
-              term_order: termDicts.join(','),
-              term_disabled: '',
-              term_spoiler: '',
-              freq_order: freqDicts.join(','),
-              freq_disabled: '',
-              should_highlight_kanji_in_search: true,
-              should_highlight_kanji_in_text: true
-          };
-          
-          // console.log('Created default preferences from Dictionary Index:', data);
-        } else {
-          // console.log('Loaded user preferences from database:', data);
+        if (!response.ok) {
+          throw new Error('Failed to fetch preferences');
         }
 
-        const preferences = {
-          dictionaryOrder: data.term_order ? data.term_order.split(',') : [],
-          disabledDictionaries: data.term_disabled ? data.term_disabled.split(',') : [],
-          spoilerDictionaries: data.term_spoiler ? data.term_spoiler.split(',') : [],
-          freqDictionaryOrder: data.freq_order ? data.freq_order.split(',') : [],
-          freqDisabledDictionaries: data.freq_disabled ? data.freq_disabled.split(',') : [],
-          shouldHighlightKanjiInSearch: data.should_highlight_kanji_in_search ?? true,
-          shouldHighlightKanjiInText: data.should_highlight_kanji_in_text ?? true
-        };
+        const { preferences: data } = await response.json();
+
+        let preferences;
+
+        if (!data) {
+          // console.log('No user preferences found');
+
+          // Get all dictionaries from Dictionary Index
+          const dictResponse = await fetch('/api/dictionaries', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!dictResponse.ok) {
+            throw new Error('Failed to fetch dictionaries');
+          }
+
+          const { dictionaries: dictIndexData } = await dictResponse.json();
+
+          // Create default preferences
+          const termDicts = dictIndexData
+              ?.filter((d: any) => d.type === 0)
+              .map((d: any) => `${d.title}#${d.revision}`) || [];
+
+          const freqDicts = dictIndexData
+              ?.filter((d: any) => d.type === 2)
+              .map((d: any) => `${d.title}#${d.revision}`) || [];
+
+          preferences = {
+              dictionaryOrder: termDicts,
+              disabledDictionaries: [],
+              spoilerDictionaries: [],
+              freqDictionaryOrder: freqDicts,
+              freqDisabledDictionaries: [],
+              shouldHighlightKanjiInSearch: true,
+              shouldHighlightKanjiInText: true
+          };
+
+          // console.log('Created default preferences from Dictionary Index:', preferences);
+        } else {
+          // console.log('Loaded user preferences from API:', data);
+          preferences = data;
+        }
 
         // Cache in localStorage
         const cacheKey = `user-preferences-${user.id}`;
@@ -154,28 +158,26 @@ export default function SettingsPage() {
 
   const updatePreferences = async (newPreferences: typeof preferences) => {
     if (!newPreferences || !user) return;
-    
+
     try {
       // Use the user from AuthContext instead of making another getUser call
       if (!user) return;
 
-      const { error } = await supabase
-        .from('User Preferences')
-        .upsert({
-          user_id: user.id,
-          term_order: newPreferences.dictionaryOrder.join(','),
-          term_disabled: newPreferences.disabledDictionaries.join(','),
-          term_spoiler: newPreferences.spoilerDictionaries.join(','),
-          freq_order: newPreferences.freqDictionaryOrder.join(','),
-          freq_disabled: newPreferences.freqDisabledDictionaries.join(','),
-          should_highlight_kanji_in_search: newPreferences.shouldHighlightKanjiInSearch ?? true,
-          should_highlight_kanji_in_text: newPreferences.shouldHighlightKanjiInText ?? true
-        });
+      // Update preferences via API
+      const response = await fetch('/api/preferences', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ preferences: newPreferences }),
+      });
 
-      // console.log('🔍 Settings: User Preferences UPSERT query executed for user:', user.id);
+      // console.log('🔍 Settings: User Preferences update executed for user:', user.id);
 
-      if (error) throw error;
-      
+      if (!response.ok) {
+        throw new Error('Failed to update preferences');
+      }
+
       // Update localStorage cache
       const cacheKey = `user-preferences-${user.id}`;
       const cachedPreferences = {
@@ -188,7 +190,7 @@ export default function SettingsPage() {
       };
       localStorage.setItem(cacheKey, JSON.stringify(cachedPreferences));
       // console.log('Updated preferences cache in localStorage');
-      
+
       setPreferences(newPreferences);
       // console.log('Updated preferences:', newPreferences);
     } catch (err) {

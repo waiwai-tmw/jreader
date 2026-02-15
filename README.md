@@ -11,6 +11,7 @@ Changes planned to enable self-hosting:
 - [ ] Shim or replace OAuth login
 - [ ] Add example .env file
 - [ ] (Not in this repo) Add import-export for existing https://jreader.moe users' data
+- [ ] Migrate to bun?
 
 -----
 

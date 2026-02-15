@@ -25,13 +25,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from '@/contexts/AuthContext';
 import { useKanjiStates, KanjiQueryEnabled, SubscriptionCheck } from '@/hooks/useKanjiStates'
 import { usePageTitle } from '@/hooks/usePageTitle'
-import { createClient } from '@/utils/supabase/client'
 
 export default function StatsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [importText, setImportText] = useState('')
-  const supabase = createClient()
   const { knownKanji, encounteredKanji, isLoading: kanjiLoading } = useKanjiStates(KanjiQueryEnabled.ENABLED, SubscriptionCheck.DONT_CHECK)
   const queryClient = useQueryClient()
   usePageTitle('Stats - JReader');
@@ -87,12 +85,11 @@ export default function StatsPage() {
   }
 
   const handleImport = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     // Extract unique kanji characters
     const kanjiToImport = Array.from(new Set(
-      Array.from(importText).filter(char => 
+      Array.from(importText).filter(char =>
         char.match(/[\u4E00-\u9FFF]/) && // is kanji
         !knownKanji.includes(char) // not already known
       )
@@ -100,21 +97,26 @@ export default function StatsPage() {
 
     if (kanjiToImport.length === 0) return
 
-    // Prepare rows for insertion
-    const rows = kanjiToImport.map(kanji => ({
-      user_id: user.id,
-      kanji,
-      state: 1, // KNOWN
-      is_import: true
-    }))
+    try {
+      // Import kanji via API
+      const response = await fetch('/api/kanji/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ kanjiList: kanjiToImport }),
+      })
 
-    await supabase
-      .from('User Kanji')
-      .upsert(rows)
+      if (!response.ok) {
+        throw new Error('Failed to import kanji')
+      }
 
-    // Invalidate the kanjiStates query to trigger a refresh
-    queryClient.invalidateQueries({ queryKey: ['kanjiStates'] })
-    setImportText('') // Clear input after import
+      // Invalidate the kanjiStates query to trigger a refresh
+      queryClient.invalidateQueries({ queryKey: ['kanjiStates'] })
+      setImportText('') // Clear input after import
+    } catch (error) {
+      console.error('Error importing kanji:', error)
+    }
   }
 
   return (

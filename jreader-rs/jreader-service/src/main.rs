@@ -104,24 +104,40 @@ async fn run_http_server() -> Result<(), Error> {
 
     let dictionary_info = yomi_dicts.read().await.get_dictionaries_info();
 
-    // Create a single shared connection pool for Supabase
-    let pool = user_preferences::build_shared_pool(
-        &std::env::var("SUPABASE_URL").context(format!("Failed to load SUPABASE_URL"))?,
-        std::env::var("SUPABASE_PORT")
-            .context(format!("Failed to load SUPABASE_PORT"))?
-            .parse()
-            .context(format!("Failed to parse SUPABASE_PORT"))?,
-        &std::env::var("SUPABASE_USER").context(format!("Failed to load SUPABASE_USER"))?,
-        &std::env::var("SUPABASE_PASSWORD").context(format!("Failed to load SUPABASE_PASSWORD"))?,
-        &std::env::var("SUPABASE_DATABASE").context(format!("Failed to load SUPABASE_DATABASE"))?,
-    )
-    .context(format!("Failed to create shared database pool"))?;
-
-    // Test the pool connection
-    let _client = pool.get().await.context("Failed to get client from pool")?;
-    info!("✅ Shared database pool created and tested successfully");
-
-    let shared_pool = std::sync::Arc::new(pool);
+    // Create a single shared connection pool for Supabase (optional)
+    let shared_pool: Option<std::sync::Arc<_>> = match (
+        std::env::var("SUPABASE_URL").ok(),
+        std::env::var("SUPABASE_PORT").ok().and_then(|p| p.parse::<u16>().ok()),
+        std::env::var("SUPABASE_USER").ok(),
+        std::env::var("SUPABASE_PASSWORD").ok(),
+        std::env::var("SUPABASE_DATABASE").ok(),
+    ) {
+        (Some(url), Some(port), Some(user), Some(password), Some(database)) => {
+            match user_preferences::build_shared_pool(&url, port, &user, &password, &database) {
+                Ok(pool) => {
+                    let pool = std::sync::Arc::new(pool);
+                    match pool.get().await {
+                        Ok(_) => {
+                            info!("✅ Shared database pool created and tested successfully");
+                            Some(pool)
+                        }
+                        Err(e) => {
+                            warn!("⚠️ Database connection test failed (running without DB): {e}");
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("⚠️ Failed to create database pool (running without DB): {e}");
+                    None
+                }
+            }
+        }
+        _ => {
+            warn!("⚠️ Supabase env vars not set, running without database");
+            None
+        }
+    };
 
     // Create database services using the shared pool
     let user_preferences_db =
